@@ -1,43 +1,30 @@
-import subprocess
-import sys
-import psutil
 import threading
-from semaphore import Semaphore as S
+from themeToggler import toggleOSThemeColor
+from pynput import keyboard
 
-def detect_darkmode_in_windows():
-    try:
-        import winreg
-    except ImportError:
-        return False
-    registry = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
-    reg_keypath = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-    try:
-        reg_key = winreg.OpenKey(registry, reg_keypath)
-    except FileNotFoundError:
-        return False
+pressed = set()
 
-    for i in range(1024):
-        try:
-            value_name, value, _ = winreg.EnumValue(reg_key, i)
-            if value_name == 'AppsUseLightTheme':
-                return value == 0
-        except OSError:
-            break
-    raise Exception("Incompatible OS")
+COMBINATIONS = [
+    {
+        "keys": [
+            {keyboard.Key.cmd, keyboard.KeyCode(char="z")},
+            {keyboard.Key.cmd, keyboard.KeyCode(char="Z")},
+        ],
+        "command": toggleOSThemeColor,
+    },
+]
 
+def on_press(key):
+    pressed.add(key)
+    for c in COMBINATIONS:
+        for keys in c["keys"]:
+            if keys.issubset(pressed):
+                threading.Thread(target=c["command"]).start()
 
-def toggleOSThemeColor():
-    command = []
-    try:
-        if detect_darkmode_in_windows():
-            command = ['reg.exe', 'add', 'HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize',
-                '/v', 'AppsUseLightTheme', '/t', 'REG_DWORD', '/d', '1', '/f']
-        else:
-            command = ['reg.exe', 'add', 'HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize',
-                '/v', 'AppsUseLightTheme', '/t', 'REG_DWORD', '/d', '0', '/f']
-        subprocess.run(command)
-    except Exception as e:
-        print("Incompatible OS - Only Works with Windows")
+def on_release(key):
+    if key in pressed:
+        pressed.remove(key)
 
-
-toggleOSThemeColor()
+if __name__ == '__main__':
+    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+        listener.join()
